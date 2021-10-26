@@ -1,5 +1,7 @@
 import React, { useState } from "react";
+import { useHistory } from "react-router";
 import styled, { css } from "styled-components";
+import { v4 as uuidv4 } from "uuid";
 
 const MainScreen = () => {
   const [joinModal, setJoinModal] = useState(false);
@@ -14,12 +16,17 @@ const MainScreen = () => {
     setJoinModal(false);
     reset();
   };
+
+  const history = useHistory();
+
   return (
     <Container>
       <ContentContainer>
         <h1>Simple Video Chat</h1>
         <ButtonContainer>
-          <Button primary>Create a Room</Button>
+          <Button primary onClick={() => history.push(`/${uuidv4()}`)}>
+            Create a Room
+          </Button>
           <Button onClick={() => setJoinModal(true)}>Join a Room</Button>
         </ButtonContainer>
         <JoinModal show={joinModal}>
