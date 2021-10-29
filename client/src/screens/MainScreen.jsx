@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { useHistory } from "react-router";
 import styled, { css } from "styled-components";
-import { v4 as uuidv4 } from "uuid";
+import ChatRoom from "./ChatRoom";
 
 const MainScreen = () => {
   const [joinModal, setJoinModal] = useState(false);
   const [roomID, setRoomID] = useState("");
   const [name, setName] = useState("");
+  const [chatRoom, setChatRoom] = useState(false);
 
   const reset = () => {
     setRoomID("");
@@ -17,14 +17,14 @@ const MainScreen = () => {
     reset();
   };
 
-  const history = useHistory();
-
-  return (
+  return chatRoom ? (
+    <ChatRoom roomID={roomID} username={name} />
+  ) : (
     <Container>
       <ContentContainer>
         <h1>Simple Video Chat</h1>
         <ButtonContainer>
-          <Button primary onClick={() => history.push(`/${uuidv4()}`)}>
+          <Button primary onClick={() => setChatRoom(true)}>
             Create a Room
           </Button>
           <Button onClick={() => setJoinModal(true)}>Join a Room</Button>
@@ -52,6 +52,7 @@ const MainScreen = () => {
                 type="submit"
                 disabled={!(roomID && name) ? true : false}
                 primary
+                onClick={() => setChatRoom(true)}
               >
                 Join
               </Button>
