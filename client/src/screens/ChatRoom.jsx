@@ -1,28 +1,146 @@
-import React, { useEffect, useRef } from "react";
 import styled from "styled-components";
 import MicIcon from "@mui/icons-material/Mic";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import SecurityIcon from "@mui/icons-material/Security";
 import SupervisorAccountIcon from "@mui/icons-material/SupervisorAccount";
 import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
+import { useRef } from "react";
+import { useEffect } from "react";
+import { useState } from "react";
+import ParticipantsModal from "../components/ParticipantsModal";
+import { io } from "socket.io-client";
+import Peer from "simple-peer";
 
-const ChatRoom = () => {
-  // const myVideo = useRef();
-  // useEffect(() => {
-  //   navigator.mediaDevices
-  //     .getUserMedia({ video: true, audio: true })
-  //     .then((currentStream) => {
-  //       myVideo.current.srcObject = currentStream;
-  //     });
-  // }, []);
+const ChatRoom = ({ roomID, username }) => {
+  const socket = io("http://localhost:5000");
+  const [me, setMe] = useState("");
+  const [stream, setStream] = useState(null);
+  const [receivingCall, setReceivingCall] = useState(false);
+  const [caller, setCaller] = useState("");
+  const [callerSignal, setCallerSignal] = useState();
+  const [callAccepted, setCallAccepted] = useState(false);
+  const [callEnded, setCallEnded] = useState(false);
+  const [name, setName] = useState("");
+
+  const [chat, setChat] = useState(true);
+  const [modal, setModal] = useState(true);
+
+  const myVideo = useRef();
+  const userVideo = useRef();
+  const connectionRef = useRef();
+
+  useEffect(() => {
+    navigator.mediaDevices
+      .getUserMedia({ video: true, audio: true })
+      .then((currentStream) => {
+        setStream(currentStream);
+        myVideo.current.srcObject = currentStream;
+      });
+
+    socket.on("me", (id) => {
+      setMe(id);
+      if (roomID) {
+        setName(username);
+      }
+    });
+
+    socket.on("calluser", ({ from, name, signal }) => {
+      setReceivingCall(true);
+      setCaller(from);
+      setName(name);
+      setCallerSignal(signal);
+    });
+
+    socket.on("callaccepted", ({ signal }) => {
+      console.log(signal);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (roomID && me !== "") {
+      callUser(roomID);
+    }
+  }, [me, name, stream]);
+
+  const callUser = (id) => {
+    console.log("CALLUSER RAN");
+    const peer = new Peer({
+      initiator: true,
+      trickle: false,
+      stream: stream,
+    });
+
+    peer.on("signal", (data) => {
+      socket.emit("calluser", {
+        userToCall: id,
+        signalData: data,
+        from: me,
+        name: name,
+      });
+      console.log("PEER SIGNAL CALLUSER EMIT");
+    });
+
+    peer.on("stream", (stream) => {
+      userVideo.current.srcObject = stream;
+      console.log("PEER STREAM CALLUSER");
+    });
+
+    socket.on("callaccepted", ({ signal }) => {
+      console.log(signal);
+      peer.signal(signal);
+      console.log("CALLUSER CALL ACCEPTED");
+    });
+
+    connectionRef.current = peer;
+  };
+
+  const answerCall = () => {
+    console.log("ANswerCAll Ran");
+    setCallAccepted(true);
+    const peer = new Peer({
+      initiator: false,
+      trickle: false,
+      stream: stream,
+    });
+
+    peer.on("signal", (data) => {
+      socket.emit("answercall", { signal: data, to: caller });
+      console.log("PEER SIGNAL EMIT ANSWERCALL ");
+    });
+
+    peer.on("stream", (stream) => {
+      userVideo.current.srcObject = stream;
+      console.log("PEER STREAM ANSWERCALL");
+    });
+
+    peer.signal(callerSignal);
+    connectionRef.current = peer;
+  };
+
+  const leaveCall = () => {
+    setCallEnded(true);
+    connectionRef.current.destroy();
+    window.location.reload();
+  };
 
   return (
-    // <VideoContainer>
-    //   <video playsInline ref={myVideo} muted autoPlay />
-    // </VideoContainer>
     <Container>
       <MainContainer>
-        <VideoContainer></VideoContainer>
+        <ParticipantsModal
+          show={modal}
+          close={() => setModal(!modal)}
+          id={me}
+          receivingCall={receivingCall}
+          callAccepted={callAccepted}
+          answerCall={answerCall}
+          name={name}
+        />
+        <VideoContainer>
+          {stream && <video playsInline ref={myVideo} muted autoPlay />}
+          {callAccepted && !callEnded && (
+            <video playsInline ref={userVideo} autoPlay />
+          )}
+        </VideoContainer>
         <VideoFooter>
           <ControlsLeft>
             <Button>
@@ -39,21 +157,23 @@ const ChatRoom = () => {
               <SecurityIcon />
               <span>Security</span>
             </Button>
-            <Button>
+            <Button onClick={() => setModal(!modal)}>
               <SupervisorAccountIcon />
               <span>Participants</span>
             </Button>
-            <Button>
+            <Button onClick={() => setChat(!chat)}>
               <ChatBubbleIcon />
               <span>Chat</span>
             </Button>
           </ControlsCenter>
-          <ControlsRight>
-            <span>Leave Meeting</span>
+          <ControlsRight
+            onClick={roomID ? leaveCall : () => window.location.reload()}
+          >
+            <span>{roomID ? "Leave Meeting" : "End Meeting"}</span>
           </ControlsRight>
         </VideoFooter>
       </MainContainer>
-      <ChatContainer>
+      <ChatContainer chat={chat}>
         <h5>Chats</h5>
         <Chat></Chat>
         <InputContainer>
@@ -78,6 +198,15 @@ const MainContainer = styled.div`
 const VideoContainer = styled.div`
   flex-grow: 1;
   background-color: black;
+  border: 1px solid green;
+  display: flex;
+  justify-content: center;
+
+  > video {
+    max-width: 30rem;
+    max-height: 22rem;
+    border: 1px solid red;
+  }
 `;
 const VideoFooter = styled.div`
   display: flex;
@@ -127,7 +256,7 @@ const Button = styled.div`
 const ChatContainer = styled.div`
   flex: 0.25;
   background-color: #2c2c2c;
-  display: flex;
+  display: ${({ chat }) => (chat ? "flex" : "none")};
   flex-direction: column;
   align-items: center;
   border-left: 1px solid #3d3d3d;
