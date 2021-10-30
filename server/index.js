@@ -32,9 +32,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on("answercall", (data) => {
-    console.log("answer call ran");
-    console.log(data.to);
-    console.log(data.signal);
     io.to(data.to).emit("callaccepted", { signal: data.signal });
     console.log("callaccepted emitted");
   });

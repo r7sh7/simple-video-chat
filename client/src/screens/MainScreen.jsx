@@ -1,64 +1,31 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import styled, { css } from "styled-components";
 import ChatRoom from "./ChatRoom";
+import { io } from "socket.io-client";
 
+const socket = io("http://localhost:5000");
 const MainScreen = () => {
-  const [joinModal, setJoinModal] = useState(false);
-  const [roomID, setRoomID] = useState("");
-  const [name, setName] = useState("");
-  const [chatRoom, setChatRoom] = useState(false);
+  const [chatRoom, setChatRoom] = useState("");
+  const [me, setMe] = useState("");
+  useEffect(() => {
+    socket.on("me", (id) => {
+      setMe(id);
+      console.log("socket.on(me) ran");
+    });
+  }, []);
 
-  const reset = () => {
-    setRoomID("");
-    setName("");
-  };
-  const handleClick = () => {
-    setJoinModal(false);
-    reset();
-  };
-
-  return chatRoom ? (
-    <ChatRoom roomID={roomID} username={name} />
+  return chatRoom !== "" ? (
+    <ChatRoom chatRoom={chatRoom} me={me} socket={socket} />
   ) : (
     <Container>
       <ContentContainer>
         <h1>Simple Video Chat</h1>
         <ButtonContainer>
-          <Button primary onClick={() => setChatRoom(true)}>
+          <Button primary onClick={() => setChatRoom("host")}>
             Create a Room
           </Button>
-          <Button onClick={() => setJoinModal(true)}>Join a Room</Button>
+          <Button onClick={() => setChatRoom("guest")}>Join a Room</Button>
         </ButtonContainer>
-        <JoinModal show={joinModal}>
-          <FormContainer>
-            <h2>Join Room</h2>
-            <Form>
-              <Input
-                placeholder="Room ID"
-                value={roomID}
-                onChange={(e) => setRoomID(e.target.value)}
-              />
-              <Input
-                placeholder="Name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </Form>
-            <FormButtons>
-              <Button type="submit" onClick={handleClick}>
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={!(roomID && name) ? true : false}
-                primary
-                onClick={() => setChatRoom(true)}
-              >
-                Join
-              </Button>
-            </FormButtons>
-          </FormContainer>
-        </JoinModal>
       </ContentContainer>
     </Container>
   );
@@ -125,57 +92,4 @@ const Button = styled.button`
         color: gray;
       }
     `}
-`;
-
-const JoinModal = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  right: 0;
-  z-index: 99999;
-  background-color: rgba(0, 0, 0, 0.6);
-  display: ${(props) => (props.show ? "grid" : "none")};
-  place-items: center;
-`;
-
-const FormContainer = styled.div`
-  background-color: #1d1d1d;
-  border: 1px solid gray;
-  border-radius: 0.5rem;
-  padding: 2.1rem;
-  max-width: 25rem;
-  text-align: left;
-
-  > h2 {
-    color: white;
-  }
-`;
-
-const Form = styled.form`
-  display: flex;
-  flex-direction: column;
-  margin: 2rem 0;
-  margin-bottom: 4rem;
-  min-width: 20rem;
-`;
-
-const Input = styled.input`
-  background: transparent;
-  padding: 0.7rem;
-  border: 1px solid gray;
-  margin-bottom: 1rem;
-  border-radius: 0.5rem;
-  color: white;
-  font-size: 1rem;
-  font-weight: 500;
-
-  :focus {
-    outline: none;
-    border: 0.1px solid rgb(28, 107, 226);
-  }
-`;
-
-const FormButtons = styled.div`
-  display: flex;
 `;
