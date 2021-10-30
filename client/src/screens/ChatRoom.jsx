@@ -1,19 +1,24 @@
-import styled from "styled-components";
+import styled, { css } from "styled-components";
 import MicIcon from "@mui/icons-material/Mic";
+import MicOffIcon from "@mui/icons-material/MicOff";
 import VideocamIcon from "@mui/icons-material/Videocam";
+import VideocamOffIcon from "@mui/icons-material/VideocamOff";
 import SecurityIcon from "@mui/icons-material/Security";
 import SupervisorAccountIcon from "@mui/icons-material/SupervisorAccount";
 import ChatBubbleIcon from "@mui/icons-material/ChatBubble";
 import { useRef } from "react";
 import { useEffect } from "react";
 import { useState } from "react";
-import ParticipantsModal from "../components/ParticipantsModal";
-import { io } from "socket.io-client";
+// import ParticipantsModal from "../components/ParticipantsModal";
+
 import Peer from "simple-peer";
 
-const ChatRoom = ({ roomID, username }) => {
-  const socket = io("http://localhost:5000");
-  const [me, setMe] = useState("");
+import CloseIcon from "@mui/icons-material/Close";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import CopyToClipboard from "react-copy-to-clipboard";
+import Loader from "../components/Loader";
+
+const ChatRoom = ({ chatRoom, me, socket }) => {
   const [stream, setStream] = useState(null);
   const [receivingCall, setReceivingCall] = useState(false);
   const [caller, setCaller] = useState("");
@@ -21,9 +26,13 @@ const ChatRoom = ({ roomID, username }) => {
   const [callAccepted, setCallAccepted] = useState(false);
   const [callEnded, setCallEnded] = useState(false);
   const [name, setName] = useState("");
+  const [idToCall, setIdToCall] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const [chat, setChat] = useState(true);
   const [modal, setModal] = useState(true);
+  const [mute, setMute] = useState(false);
+  const [stopVideo, setStopVideo] = useState(false);
 
   const myVideo = useRef();
   const userVideo = useRef();
@@ -37,33 +46,16 @@ const ChatRoom = ({ roomID, username }) => {
         myVideo.current.srcObject = currentStream;
       });
 
-    socket.on("me", (id) => {
-      setMe(id);
-      if (roomID) {
-        setName(username);
-      }
-    });
-
     socket.on("calluser", ({ from, name, signal }) => {
       setReceivingCall(true);
       setCaller(from);
       setName(name);
       setCallerSignal(signal);
     });
-
-    socket.on("callaccepted", ({ signal }) => {
-      console.log(signal);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (roomID && me !== "") {
-      callUser(roomID);
-    }
-  }, [me, name, stream]);
+  }, [socket]);
 
   const callUser = (id) => {
-    console.log("CALLUSER RAN");
+    setLoading(true);
     const peer = new Peer({
       initiator: true,
       trickle: false,
@@ -77,26 +69,24 @@ const ChatRoom = ({ roomID, username }) => {
         from: me,
         name: name,
       });
-      console.log("PEER SIGNAL CALLUSER EMIT");
     });
 
     peer.on("stream", (stream) => {
       userVideo.current.srcObject = stream;
-      console.log("PEER STREAM CALLUSER");
     });
 
     socket.on("callaccepted", ({ signal }) => {
-      console.log(signal);
+      setCallAccepted(true);
+      setModal(false);
       peer.signal(signal);
-      console.log("CALLUSER CALL ACCEPTED");
     });
 
     connectionRef.current = peer;
   };
 
   const answerCall = () => {
-    console.log("ANswerCAll Ran");
     setCallAccepted(true);
+    setModal(false);
     const peer = new Peer({
       initiator: false,
       trickle: false,
@@ -105,12 +95,10 @@ const ChatRoom = ({ roomID, username }) => {
 
     peer.on("signal", (data) => {
       socket.emit("answercall", { signal: data, to: caller });
-      console.log("PEER SIGNAL EMIT ANSWERCALL ");
     });
 
     peer.on("stream", (stream) => {
       userVideo.current.srcObject = stream;
-      console.log("PEER STREAM ANSWERCALL");
     });
 
     peer.signal(callerSignal);
@@ -123,58 +111,155 @@ const ChatRoom = ({ roomID, username }) => {
     window.location.reload();
   };
 
+  const handleClick = () => {
+    setModal(false);
+    setIdToCall("");
+    setName("");
+  };
+
+  const muteUnmute = () => {
+    const enabled = stream.getAudioTracks()[0].enabled;
+    if (enabled) {
+      stream.getAudioTracks()[0].enabled = false;
+      setMute(true);
+    } else {
+      stream.getAudioTracks()[0].enabled = true;
+      setMute(false);
+    }
+  };
+
+  const playStopVideo = () => {
+    const enabled = stream.getVideoTracks()[0].enabled;
+    if (enabled) {
+      stream.getVideoTracks()[0].enabled = false;
+      setStopVideo(true);
+    } else {
+      stream.getVideoTracks()[0].enabled = true;
+      setStopVideo(false);
+    }
+  };
   return (
     <Container>
       <MainContainer>
-        <ParticipantsModal
-          show={modal}
-          close={() => setModal(!modal)}
-          id={me}
-          receivingCall={receivingCall}
-          callAccepted={callAccepted}
-          answerCall={answerCall}
-          name={name}
-        />
         <VideoContainer>
-          {stream && <video playsInline ref={myVideo} muted autoPlay />}
+          {stream && (
+            <>
+              <video playsInline ref={myVideo} muted autoPlay />
+            </>
+          )}
           {callAccepted && !callEnded && (
-            <video playsInline ref={userVideo} autoPlay />
+            <>
+              <video playsInline ref={userVideo} autoPlay />
+            </>
           )}
         </VideoContainer>
+        {chatRoom === "host" ? (
+          <AnswerCallContainer show={modal}>
+            <Modal>
+              <Header>
+                <span>Participants(1)</span>
+                <Close onClick={() => setModal(false)} />
+              </Header>
+              <Participants>
+                {receivingCall && !callAccepted && (
+                  <User>
+                    <span>{name}</span>
+                    <AcceptButton onClick={answerCall}>Accept</AcceptButton>
+                  </User>
+                )}
+              </Participants>
+              <Footer>
+                <span>Room ID: {me}</span>
+                <CopyToClipboard text={me}>
+                  <ContentCopy />
+                </CopyToClipboard>
+              </Footer>
+            </Modal>
+          </AnswerCallContainer>
+        ) : (
+          <JoinModal show={modal}>
+            <FormContainer>
+              {loading ? (
+                <Loader />
+              ) : (
+                <>
+                  <h2>Join Room</h2>
+                  <Form>
+                    <Input
+                      placeholder="Room ID"
+                      value={idToCall}
+                      onChange={(e) => setIdToCall(e.target.value)}
+                    />
+                    <Input
+                      placeholder="Name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                  </Form>
+                  <FormButtons>
+                    <Button type="submit" onClick={handleClick}>
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={!(idToCall && name) ? true : false}
+                      primary
+                      onClick={() => callUser(idToCall)}
+                    >
+                      Join
+                    </Button>
+                  </FormButtons>
+                </>
+              )}
+            </FormContainer>
+          </JoinModal>
+        )}
         <VideoFooter>
           <ControlsLeft>
-            <Button>
-              <MicIcon />
-              <span>Mute</span>
-            </Button>
-            <Button>
-              <VideocamIcon />
-              <span>Stop Video</span>
-            </Button>
+            <ControlButton onClick={muteUnmute}>
+              {mute ? <MicOffIcon style={{ fill: "#d40303" }} /> : <MicIcon />}
+              {mute ? (
+                <span style={{ color: "#d40303" }}>Unmute</span>
+              ) : (
+                <span>Mute</span>
+              )}
+            </ControlButton>
+            <ControlButton onClick={playStopVideo}>
+              {stopVideo ? (
+                <VideocamOffIcon style={{ fill: "#d40303" }} />
+              ) : (
+                <VideocamIcon />
+              )}
+              {stopVideo ? (
+                <span style={{ color: "#d40303" }}>Play Video</span>
+              ) : (
+                <span>Stop Video</span>
+              )}
+            </ControlButton>
           </ControlsLeft>
           <ControlsCenter>
-            <Button>
+            <ControlButton>
               <SecurityIcon />
               <span>Security</span>
-            </Button>
-            <Button onClick={() => setModal(!modal)}>
+            </ControlButton>
+            <ControlButton onClick={() => setModal(!modal)}>
               <SupervisorAccountIcon />
               <span>Participants</span>
-            </Button>
-            <Button onClick={() => setChat(!chat)}>
+            </ControlButton>
+            <ControlButton onClick={() => setChat(!chat)}>
               <ChatBubbleIcon />
               <span>Chat</span>
-            </Button>
+            </ControlButton>
           </ControlsCenter>
           <ControlsRight
-            onClick={roomID ? leaveCall : () => window.location.reload()}
+            onClick={idToCall ? leaveCall : () => window.location.reload()}
           >
-            <span>{roomID ? "Leave Meeting" : "End Meeting"}</span>
+            <span>{idToCall ? "Leave Meeting" : "End Meeting"}</span>
           </ControlsRight>
         </VideoFooter>
       </MainContainer>
       <ChatContainer chat={chat}>
-        <h5>Chats</h5>
+        <h5>Chat</h5>
         <Chat></Chat>
         <InputContainer>
           <input type="text" placeholder="Type message here..." />
@@ -194,6 +279,7 @@ const MainContainer = styled.div`
   flex: 1;
   display: flex;
   flex-direction: column;
+  justify-content: center;
 `;
 const VideoContainer = styled.div`
   flex-grow: 1;
@@ -201,6 +287,7 @@ const VideoContainer = styled.div`
   border: 1px solid green;
   display: flex;
   justify-content: center;
+  align-items: center;
 
   > video {
     max-width: 30rem;
@@ -234,7 +321,7 @@ const ControlsRight = styled.div`
   margin-right: 1.2rem;
 `;
 
-const Button = styled.div`
+const ControlButton = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -282,4 +369,154 @@ const InputContainer = styled.div`
     color: whitesmoke;
     width: 100%;
   }
+`;
+
+const JoinModal = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  z-index: 99999;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: ${(props) => (props.show ? "grid" : "none")};
+  place-items: center;
+`;
+
+const FormContainer = styled.div`
+  background-color: #1d1d1d;
+  border: 1px solid gray;
+  border-radius: 0.5rem;
+  padding: 2.1rem;
+  max-width: 25rem;
+  text-align: left;
+
+  > h2 {
+    color: white;
+  }
+`;
+
+const Form = styled.form`
+  display: flex;
+  flex-direction: column;
+  margin: 2rem 0;
+  margin-bottom: 4rem;
+  min-width: 20rem;
+`;
+
+const Input = styled.input`
+  background: transparent;
+  padding: 0.7rem;
+  border: 1px solid gray;
+  margin-bottom: 1rem;
+  border-radius: 0.5rem;
+  color: white;
+  font-size: 1rem;
+  font-weight: 500;
+
+  :focus {
+    outline: none;
+    border: 0.1px solid rgb(28, 107, 226);
+  }
+`;
+
+const FormButtons = styled.div`
+  display: flex;
+`;
+
+const Button = styled.button`
+  background: transparent;
+  border-radius: 0.5rem;
+  border: 1px solid gray;
+  color: white;
+  margin: 0.75rem 1rem;
+  padding: 0.5rem;
+  font-weight: 600;
+  font-size: 1rem;
+  width: 100%;
+
+  :hover {
+    background-color: #535353c3;
+  }
+
+  ${(props) =>
+    props.primary &&
+    css`
+      border: 1px solid #0172e4;
+      background-color: #0172e4;
+
+      :hover {
+        background-color: #0163e4;
+      }
+
+      :disabled {
+        background-color: #2e2e2e;
+        border: 1px solid #2e2e2e;
+        color: gray;
+      }
+    `}
+`;
+
+const AnswerCallContainer = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  z-index: 99999;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: ${(props) => (props.show ? "grid" : "none")};
+  place-items: center;
+`;
+
+const Modal = styled.div`
+  background-color: #1d1d1d;
+  border: 1px solid gray;
+  border-radius: 0.5rem;
+  min-width: 25rem;
+  padding: 1rem;
+  text-align: left;
+`;
+
+const Header = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #d2d2d2;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid gray;
+`;
+const Close = styled(CloseIcon)`
+  cursor: pointer;
+`;
+const ContentCopy = styled(ContentCopyIcon)`
+  cursor: pointer;
+`;
+
+const Participants = styled.div`
+  display: flex;
+  flex-direction: column;
+  color: #d2d2d2;
+  min-height: 10rem;
+`;
+const User = styled.div`
+  display: flex;
+  justify-content: space-between;
+  padding: 1rem;
+`;
+const AcceptButton = styled.button`
+  padding: 0.2rem;
+  border-radius: 0.5rem;
+  color: #d2d2d2;
+  border: 1px solid #0172e4;
+  background-color: #0163e4;
+`;
+
+const Footer = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #d2d2d2;
+  padding-top: 1rem;
+  border-top: 1px solid gray;
 `;
