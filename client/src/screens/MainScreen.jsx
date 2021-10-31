@@ -3,7 +3,7 @@ import styled, { css } from "styled-components";
 import ChatRoom from "./ChatRoom";
 import { io } from "socket.io-client";
 
-const socket = io("http://localhost:5000");
+const socket = io("https://simple-video-chat-app5.herokuapp.com");
 const MainScreen = () => {
   const [chatRoom, setChatRoom] = useState("");
   const [me, setMe] = useState("");
